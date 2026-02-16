@@ -1,2 +1,5 @@
-sample_data/
-.config/
+data/
+__pycache__/
+results/
+checkpoints/
+*.tar.gz
