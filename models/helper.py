@@ -42,10 +42,11 @@ class Upsample(nn.Module):
   def __init__(self,channels):
    super().__init__()
    self.conv = nn.Conv2d(channels, channels, 3, 1, 1)
-   def forward(self, x):
-    interpolation=F.interpolate(x, scale_factor=2, mode="nearest")
+   
+  def forward(self, x):
+   interpolation=F.interpolate(x, scale_factor=2, mode="nearest")
 
-    return self.conv(interpolation)
+   return self.conv(interpolation)
 
 
 
@@ -55,7 +56,7 @@ class Downsample(nn.Module):
   def __init__(self,channels):
    super().__init__()
    self.conv = nn.Conv2d(channels, channels, 3, 2, 0) #stride dec by half instead of max pooling
-   def forward(self, x):
+  def forward(self, x):
 
     pad=(0,1,0,1)  #Assymetric padding ?
 
@@ -103,9 +104,4 @@ class Self_Attention(nn.Module):
 
       out = self.proj(out)
 
-      return x+self.proj(out)
-
-
-
-
-
+      return x+out

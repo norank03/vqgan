@@ -36,7 +36,7 @@ class Discriminator(nn.Module):   # classify each pixel in he receptive field fa
         )
 
         # Final Layer: [512, 3, 3] -> [1, 2, 2]
-        # This outputs a small grid of "Real/Fake" scores  Small receptive field ?
+        # This outputs a small grid of "Real/Fake" scores  Small receptive field ?   # what is the diff 2x2 ?
         self.conv_out = nn.Conv2d(512, 1, kernel_size=4, stride=1, padding=1)
 
     def forward(self, x):
