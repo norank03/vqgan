@@ -42,7 +42,7 @@ class TrainVQGAN:
                     disc_real = self.discriminator(imgs)
                     disc_fake = self.discriminator(decoded_images.detach())
                     disc_factor = self.vqgan.adopt_weight(args.disc_factor, epoch*steps_per_epoch+i, threshold=args.disc_start)
-                    
+
                     d_loss_real = torch.mean(F.relu(1. - disc_real))
                     d_loss_fake = torch.mean(F.relu(1. + disc_fake))
                     gan_loss = disc_factor * 0.5 * (d_loss_real + d_loss_fake)
@@ -64,11 +64,11 @@ class TrainVQGAN:
                     self.opt_vq.step()
 
                     if i % 100 == 0:
-                        vutils.save_image((torch.cat((imgs[:4], decoded_images[:4])) + 1) / 2, 
+                        vutils.save_image((torch.cat((imgs[:4], decoded_images[:4])) + 1) / 2,
                                           f"results/{epoch}_{i}.jpg", nrow=4)
 
                     pbar.set_postfix(VQ_L=vq_loss.item(), GAN_L=gan_loss.item())
-            
+
             torch.save(self.vqgan.state_dict(), f"checkpoints/vqgan_{epoch}.pt")
 
 if __name__ == '__main__':

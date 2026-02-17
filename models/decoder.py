@@ -5,8 +5,8 @@ from models.helper import Residual_Block, Self_Attention, LearnableSwish, Upsamp
 class Decoder(nn.Module):
     def __init__(self, args):
         super().__init__()
-        latent_dim = args.latent_dim 
-        
+        latent_dim = args.latent_dim
+
         # Initial projection from latent space: 16x16
         self.conv1 = nn.Conv2d(latent_dim, 512, 3, 1, 1)
 
@@ -42,13 +42,13 @@ class Decoder(nn.Module):
         x = self.res1(x)
         x = self.attn1(x)
         x = self.res2(x)
-        
+
         # Upsampling steps
         x = self.up1(self.res3(x))
         x = self.up2(self.res4(x))
         x = self.up3(self.res5(x))
         x = self.up4(self.res6(x))
-        
+
         # Final reconstruction
         x = self.norm(x)
         x = self.swish(x)

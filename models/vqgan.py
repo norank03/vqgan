@@ -34,12 +34,12 @@ class VQGAN(nn.Module):
         decoded_images = self.decoder(post_quant_conv_mapping)
         return decoded_images
 
-    
+
 
     def calculate_lambda(self, perceptual_rec_loss, g_loss):
-    
+
         last_layer = self.decoder.conv_out
-    
+
         last_layer_weight = last_layer.weight
         perceptual_rec_grads = torch.autograd.grad(perceptual_rec_loss, last_layer_weight, retain_graph=True)[0]
         g_grads = torch.autograd.grad(g_loss, last_layer_weight, retain_graph=True)[0]

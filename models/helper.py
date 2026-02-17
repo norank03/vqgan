@@ -42,7 +42,7 @@ class Upsample(nn.Module):
   def __init__(self,channels):
    super().__init__()
    self.conv = nn.Conv2d(channels, channels, 3, 1, 1)
-   
+
   def forward(self, x):
    interpolation=F.interpolate(x, scale_factor=2, mode="nearest")
 
