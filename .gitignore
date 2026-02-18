@@ -1,6 +1,2 @@
-data/
-__pycache__/
-results/
-checkpoints/
-/content/drive
-*.tar.gz
+/content/vqgan/checkpoints
+/content/vqgan/results
