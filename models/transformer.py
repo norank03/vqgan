@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -16,10 +15,10 @@ class VQGANTransformer(nn.Module):
 
         transformer_config = {
             "vocab_size": args.num_codebook_vectors,
-            "block_size": 256,
-            "n_layer": 12,
+            "block_size": 17,
+            "n_layer": 4,
             "n_head": 4,
-            "n_embd": 512
+            "n_embd":256 
         }
         self.transformer = GPT(**transformer_config)
 
@@ -39,11 +38,17 @@ class VQGANTransformer(nn.Module):
         return quant_z, indices
 
     @torch.no_grad()
-    def z_to_image(self, indices, p1=16, p2=16):
-        ix_to_vectors = self.vqgan.codebook.embedding(indices).reshape(indices.shape[0], p1, p2, 256)
-        ix_to_vectors = ix_to_vectors.permute(0, 3, 1, 2)
-        image = self.vqgan.decode(ix_to_vectors)
-        return image
+    def z_to_image(self, indices):
+         b, n = indices.shape
+         side = int(n ** 0.5)
+         assert side * side == n, f"Token count {n} is not a perfect square."
+         ix_to_vectors = self.vqgan.codebook.embedding(indices)
+         ix_to_vectors = ix_to_vectors.view(b, side, side, -1)
+         ix_to_vectors = ix_to_vectors.permute(0, 3, 1, 2)
+         image = self.vqgan.decode(ix_to_vectors)
+         return image
+
+
 
     def forward(self, x):
         _, indices = self.encode_to_z(x)
@@ -115,4 +120,8 @@ class VQGANTransformer(nn.Module):
         log["full_sample"] = full_sample
 
         return log, torch.concat((x, x_rec, half_sample, full_sample))
+
+
+
+
 
