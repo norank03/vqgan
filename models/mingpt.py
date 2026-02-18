@@ -1,4 +1,3 @@
-
 import math
 import torch
 import torch.nn as nn
@@ -6,145 +5,151 @@ from torch.nn import functional as F
 
 
 class GPTConfig:
-
+    
     embd_pdrop = 0.1
     resid_pdrop = 0.1
     attn_pdrop = 0.1
 
     def __init__(self, vocab_size, block_size, **kwargs):
-        self.vocab_size = vocab_size  # Number of tokens
-        self.block_size = block_size # max tokens i can take
+        self.vocab_size = vocab_size
+        self.block_size = block_size
         for k, v in kwargs.items():
             setattr(self, k, v)
 
 
-
-
-
 class CausalSelfAttention(nn.Module):
-  def __init__(self,config) :
-      super().__init__()
-
-      self.n_embd = config.n_embd
-      self.n_head = config.n_head
-      self.head_dim = config.n_embd // config.n_head
-
-      self.key = nn.Linear(self.n_embd, self.n_embd)
-      self.query = nn.Linear(self.n_embd, self.n_embd)
-      self.value = nn.Linear(self.n_embd, self.n_embd)
 
 
-      self.proj = nn.Linear(self.n_embd, self.n_embd)
-
-      self.attn_drop = nn.Dropout(config.attn_pdrop)
-      self.resid_drop = nn.Dropout(config.resid_pdrop)
-
-      self.proj = nn.Linear(config.n_embd, config.n_embd)
-
-      mask = torch.tril(torch.ones(config.block_size, config.block_size))
-      self.register_buffer("mask", mask)
-
-  def forward (self):
-     B, T, C = x.shape  # batch time chn
-
-     k = self.key(x)
-     q = self.query(x)
-     v = self.value(x)
-
-     k = k.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
-     q = q.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
-     v = v.view(B, T, self.n_head, self.head_dim).transpose(1, 2)
-
-     att = q @ k.transpose(-2, -1)
-     att = att / math.sqrt(self.head_dim)   #qktrans
-
-     att = att.masked_fill(
-            self.mask[:T, :T] == 0,
-            float('-inf')
-        )     # infenity to softmax 0
-
-
-
-     att = F.softmax(att, dim=-1)
-
-     y = att @ v   #scores the values
-
-     y = y.transpose(1, 2).contiguous()
-     y = y.view(B, T, C)
-
-     y = self.proj(y)  #feed forward
-
-     return y
-
-
-
-
-class Block (nn.Module):
     def __init__(self, config):
         super().__init__()
+        assert config.n_embd % config.n_head == 0
+        # key, query, value projections for all heads
+        self.key = nn.Linear(config.n_embd, config.n_embd)
+        self.query = nn.Linear(config.n_embd, config.n_embd)
+        self.value = nn.Linear(config.n_embd, config.n_embd)
+        # regularization
+        self.attn_drop = nn.Dropout(config.attn_pdrop)
+        self.resid_drop = nn.Dropout(config.resid_pdrop)
+        # output projection
+        self.proj = nn.Linear(config.n_embd, config.n_embd)
+        # causal mask to ensure that attention is only applied to the left in the input sequence
+        mask = torch.tril(torch.ones(config.block_size,
+                                     config.block_size))
+        if hasattr(config, "n_unmasked"):
+            mask[:config.n_unmasked, :config.n_unmasked] = 1
+        self.register_buffer("mask", mask.view(1, 1, config.block_size, config.block_size))
+        self.n_head = config.n_head
 
-        self.ln1 = nn.LayerNorm(config.n_embd)       #layer norm ---- attn -----mlp (feedforward )
-        self.attn = CausalSelfAttention(config)
+    def forward(self, x, layer_past=None):
+        B, T, C = x.size()
 
+        # calculate query, key, values for all heads in batch and move head forward to be the batch dim
+        k = self.key(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
+        q = self.query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
+        v = self.value(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
+
+        present = torch.stack((k, v))
+        if layer_past is not None:
+            past_key, past_value = layer_past
+            k = torch.cat((past_key, k), dim=-2)
+            v = torch.cat((past_value, v), dim=-2)
+
+        # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
+        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+        if layer_past is None:
+            att = att.masked_fill(self.mask[:, :, :T, :T] == 0, float('-inf'))
+
+        att = F.softmax(att, dim=-1)
+        att = self.attn_drop(att)
+        y = att @ v  # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+        y = y.transpose(1, 2).contiguous().view(B, T, C)  # re-assemble all head outputs side by side
+
+        # output projection
+        y = self.resid_drop(self.proj(y))
+        return y, present  # TODO: check that this does not break anything
+
+
+class Block(nn.Module):
+    """ an unassuming Transformer block """
+
+    def __init__(self, config):
+        super().__init__()
+        self.ln1 = nn.LayerNorm(config.n_embd)
         self.ln2 = nn.LayerNorm(config.n_embd)
-
-        # Feed Forward Network
+        self.attn = CausalSelfAttention(config)
         self.mlp = nn.Sequential(
             nn.Linear(config.n_embd, 4 * config.n_embd),
-            nn.GELU(),   # Activation
+            nn.GELU(),  # nice
             nn.Linear(4 * config.n_embd, config.n_embd),
+            nn.Dropout(config.resid_pdrop),
         )
 
+    def forward(self, x, layer_past=None, return_present=False):
+        # TODO: check that training still works
+        if return_present:
+            assert not self.training
+        # layer past: tuple of length two with B, nh, T, hs
+        attn, present = self.attn(self.ln1(x), layer_past=layer_past)
 
-    def forward(self, x):
-        x = x + self.attn(self.ln1(x))
+        x = x + attn
         x = x + self.mlp(self.ln2(x))
-
+        if layer_past is not None or return_present:
+            return x, present
         return x
 
 
 class GPT(nn.Module):
-    def __init__(self, config):
+    """  the full GPT language model, with a context size of block_size """
+
+    def __init__(self, vocab_size, block_size, n_layer=12, n_head=8, n_embd=256,
+                 embd_pdrop=0., resid_pdrop=0., attn_pdrop=0., n_unmasked=0):
         super().__init__()
-        self.config = config
-
-        self.tok_emb = nn.Embedding(
-            config.vocab_size,
-            config.n_embd  )
-
-        self.pos_emb = nn.Parameter(
-            torch.zeros(1, config.block_size, config.n_embd)    # for each position hn3ml 256 dim
-        )
-
-
-        self.block1 = Block(config)
-        self.block2 = Block(config)
-
-
+        config = GPTConfig(vocab_size=vocab_size, block_size=block_size,
+                           embd_pdrop=embd_pdrop, resid_pdrop=resid_pdrop, attn_pdrop=attn_pdrop,
+                           n_layer=n_layer, n_head=n_head, n_embd=n_embd,
+                           n_unmasked=n_unmasked)
+        # input embedding stem
+        self.tok_emb = nn.Embedding(config.vocab_size, config.n_embd)
+        self.pos_emb = nn.Parameter(torch.zeros(1, config.block_size, config.n_embd))  # 512 x 1024
+        self.drop = nn.Dropout(config.embd_pdrop)
+        # transformer
+        self.blocks = nn.Sequential(*[Block(config) for _ in range(config.n_layer)])
+        # decoder head
         self.ln_f = nn.LayerNorm(config.n_embd)
-
-        self.head = nn.Linear(
-            config.n_embd,
-            config.vocab_size
-        )
+        self.head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
         self.block_size = config.block_size
+        self.apply(self._init_weights)
+        self.config = config
 
-    def forward(self, idx):
-        B, T = idx.shape
-        tok_emb = self.tok_emb(idx)
+    def get_block_size(self):
+        return self.block_size
 
-        pos_emb = self.pos_emb[:, :T, :]
-        x = tok_emb + pos_emb
-        x = self.block1(x)
-        x = self.block2(x)
+    def _init_weights(self, module):
+        if isinstance(module, (nn.Linear, nn.Embedding)):
+            module.weight.data.normal_(mean=0.0, std=0.02)
+            if isinstance(module, nn.Linear) and module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, nn.LayerNorm):
+            module.bias.data.zero_()
+            module.weight.data.fill_(1.0)
 
+    def forward(self, idx, embeddings=None):
+        token_embeddings = self.tok_emb(idx)  # each index maps to a (learnable) vector
+
+        if embeddings is not None:  # prepend explicit embeddings
+            token_embeddings = torch.cat((embeddings, token_embeddings), dim=1)
+
+        t = token_embeddings.shape[1]
+        assert t <= self.block_size, "Cannot forward, model block size is exhausted."
+        position_embeddings = self.pos_emb[:, :t, :]  # each position maps to a (learnable) vector
+        x = self.drop(token_embeddings + position_embeddings)
+        x = self.blocks(x)
         x = self.ln_f(x)
-
-
         logits = self.head(x)
 
-        return logits
+        return logits, None
+
 
 
 

@@ -1,4 +1,3 @@
-
 import os
 import numpy as np
 from tqdm import tqdm
@@ -54,7 +53,7 @@ class TrainTransformer:
             with tqdm(range(len(train_dataset))) as pbar:
                 for i, imgs in zip(pbar, train_dataset):
                     self.optim.zero_grad()
-                    imgs = imgs.to(device=args.device)
+                    imgs = imgs[0].to(device=args.device)
                     logits, targets = self.model(imgs)
                     loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.reshape(-1))
                     loss.backward()
@@ -62,9 +61,9 @@ class TrainTransformer:
                     pbar.set_postfix(Transformer_Loss=np.round(loss.cpu().detach().numpy().item(), 4))
                     pbar.update(0)
             log, sampled_imgs = self.model.log_images(imgs[0][None])
-            vutils.save_image(sampled_imgs, os.path.join("results", f"transformer_{epoch}.jpg"), nrow=4)
+            vutils.save_image(sampled_imgs, os.path.join("/content/vqgan/results", f"transformer_{epoch}.jpg"), nrow=4)
             plot_images(log)
-            torch.save(self.model.state_dict(), os.path.join("checkpoints", f"transformer_{epoch}.pt"))
+            torch.save(self.model.state_dict(), os.path.join("/content/vqgan/checkpoints", f"transformer_{epoch}.pt"))
 
 
 if __name__ == '__main__':
@@ -75,7 +74,7 @@ if __name__ == '__main__':
     parser.add_argument('--beta', type=float, default=0.25, help='Commitment loss scalar.')
     parser.add_argument('--image-channels', type=int, default=3, help='Number of channels of images.')
     parser.add_argument('--dataset-path', type=str, default='./data', help='Path to data.')
-    parser.add_argument('--checkpoint-path', type=str, default='./content/drive/MyDrive/vqgan_2.pt', help='Path to checkpoint.')
+    parser.add_argument('--checkpoint-path', type=str, default='/content/drive/MyDrive/vqgan_2.pt', help='Path to checkpoint.')
     parser.add_argument('--device', type=str, default="cuda", help='Which device the training is on')
     parser.add_argument('--batch-size', type=int, default=20, help='Input batch size for training.')
     parser.add_argument('--epochs', type=int, default=100, help='Number of epochs to train.')
@@ -91,8 +90,8 @@ if __name__ == '__main__':
     parser.add_argument('--sos-token', type=int, default=0, help='Start of Sentence token.')
 
     args = parser.parse_args()
-    
-    args.checkpoint_path ="/content/drive/MyDrive/vqgan_2.pt"
+   
+    args.checkpoint_path = r"/content/drive/MyDrive/vqgan_2.pt"
 
     train_transformer = TrainTransformer(args)
 
